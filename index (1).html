@@ -1,0 +1,122 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#243B7D"><link rel="manifest" href="manifest.json"><link rel="icon" href="icon-192.png"><title>CHAPEPH Book</title>
+<style>
+:root{--b:#243B7D;--o:#F5C518;--t:#9A6530;--bg:#FBF8F1;--k:#111}
+*{box-sizing:border-box}body{margin:0;font:16px Georgia,serif;background:var(--bg);color:var(--k);padding-bottom:72px}
+header{background:var(--b);color:#fff;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;border-bottom:4px solid var(--o)}
+header img{width:36px;height:36px}header h1{font-size:19px;margin:0}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:3px solid var(--t);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav[hidden]{display:none}nav button{flex:1;border:0;background:none;padding:12px 2px;font:13px system-ui;color:var(--b)}nav button.on{font-weight:700;background:#fff4bf}
+main{padding:14px;max-width:720px;margin:auto}h2,h3{color:var(--b);margin:.4em 0}
+.c{background:#fff;border-radius:6px;padding:12px;margin-bottom:10px;border-left:5px solid var(--t)}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}.g .c{margin:0}.g b{font-size:28px;color:var(--b)}
+.row{display:flex;gap:8px;align-items:center}
+.av{width:42px;height:42px;border-radius:50%;background:var(--b);color:var(--o);display:grid;place-items:center;font-weight:700;flex:none}
+.ph{width:110px;height:140px;object-fit:cover;border:3px solid var(--o)}
+input,select,textarea{width:100%;padding:10px;border:1px solid #aaa;border-radius:6px;font:16px system-ui;margin:3px 0 10px;background:#fff}
+label{font:600 13px system-ui;color:var(--t)}
+button.p,button.g2,.btn,a.btn{display:inline-block;border:0;border-radius:6px;padding:11px 15px;font:600 15px system-ui;margin:3px;text-decoration:none;background:var(--b);color:#fff}
+button.g2,.btn{background:var(--o);color:#000}
+table{border-collapse:collapse;font:13px system-ui}td,th{border:1px solid #ddd;padding:4px 7px;white-space:nowrap}th{background:var(--b);color:#fff}
+.cols{display:flex;flex-wrap:wrap;gap:2px 14px}.cols label{font-weight:400;color:var(--k)}.cols input,.c input[type=checkbox]{width:auto}
+</style></head><body>
+<header><img src="icon-192.png" alt=""><h1>CHAPEPH Book</h1></header><main></main>
+<nav hidden><button data-v="dash">Accueil</button><button data-v="reg">Registre</button><button data-v="form" id="nf">Ajouter</button><button data-v="rap">Rapports</button><button data-v="plus">Plus</button></nav>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const SB_URL='https://azwjoocrmdrphwsjmoeu.supabase.co',SB_KEY='sb_publishable_DkAroElHBmqXjanTvOqWSw_u6PSXaVk';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const $=s=>document.querySelector(s),E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ST=['Actif','Inactif','Transféré','Décédé'];
+const F=[['nom','Nom','text'],['prenoms','Prénom(s)','text'],['sexe','Sexe','sel',['Homme','Femme']],['naissance','Date de naissance','date'],['lieu_naissance','Lieu de naissance','text'],['situation','Situation matrimoniale','sel',['Célibataire','Marié(e)','Veuf(ve)','Divorcé(e)']],['adresse','Adresse','text'],['tel','Téléphone','tel'],['tel2','Téléphone 2','tel'],['email','E-mail','email'],['profession','Profession','text'],['etudes','Niveau d\'études','sel',['Aucun','Primaire','Secondaire','Universitaire','Autre']],['diplome','Dernier diplôme','text'],['adhesion','Date d\'adhésion','date'],['bapteme','Date de baptême','date'],['bapteme_lieu','Lieu du baptême','text'],['origine','Église d\'origine','text'],['statut','Statut','sel',ST],['fonction','Fonction','text'],['conjoint','Conjoint(e)','text'],['enfants','Enfants','text'],['urgence','Contact d\'urgence','text'],['notes','Notes','area']];
+const COLS=[['num','N°'],...F.map(f=>[f[0],f[1]]),['age','Âge'],['dep','Départements']];
+let me,M=[],D=[],view='dash',pend=null,IMG=null;
+const age=d=>d?Math.floor((Date.now()-new Date(d))/31557600000):'';
+const can=()=>me.role!='consultation',nm=m=>`${m.d.nom||''} ${m.d.prenoms||''}`.trim();
+const val=(m,k)=>k=='age'?age(m.d.naissance):k=='dep'?(m.d.dep||[]).join(', '):k=='num'?m.numero:F.find(x=>x[0]==k)?.[2]=='date'?fr(m.d[k]):m.d[k]||'';
+const fr=d=>/^\d{4}-\d\d-\d\d$/.test(d||'')?d.split('-').reverse().join('/'):(d||''),iso=s=>{const m=(s||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:''};
+function dm(i){let v=i.value.replace(/\D/g,'').slice(0,8);if(v.length>4)v=v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);else if(v.length>2)v=v.slice(0,2)+'/'+v.slice(2);i.value=v}
+const dep=(m,n)=>(m.d.dep||[]).includes(n);
+const dl=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click()};
+const R={};
+function go(v,a){view=v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));$('main').innerHTML='';R[v](a);scrollTo(0,0)}
+async function load(){const[a,b]=await Promise.all([sb.from('membres').select('*').order('numero'),sb.from('departements').select('*').order('nom')]);M=a.data||[];D=b.data||[]}
+
+R.dash=()=>{const c=f=>M.filter(f).length,h=(t,n)=>`<div class=c><b>${n}</b><br>${t}</div>`,
+tr=[['0-17',0,17],['18-25',18,25],['26-40',26,40],['41-60',41,60],['Plus de 60',61,200]];
+$('main').innerHTML=`<div class=g>${h('Membres',M.length)}${h('Nouveaux (30 jours)',c(m=>Date.now()-new Date(m.cree)<2592e6))}${h('Hommes',c(m=>m.d.sexe=='Homme'))}${h('Femmes',c(m=>m.d.sexe=='Femme'))}${h('Actifs',c(m=>m.d.statut=='Actif'))}${h('Inactifs',c(m=>m.d.statut=='Inactif'))}${h('Baptisés',c(m=>m.d.bapteme))}</div>
+<div class=c><b>Par âge</b>${tr.map(([t,a,b])=>`<div>${t} : ${c(m=>{const x=age(m.d.naissance);return x!==''&&x>=a&&x<=b})}</div>`).join('')}</div>
+<div class=c><b>Par département</b>${D.map(d=>`<div>${E(d.nom)} : ${c(m=>dep(m,d.nom))}</div>`).join('')||'<div>Aucun département.</div>'}</div>`};
+
+R.reg=()=>{$('main').innerHTML=`<input id=q placeholder="Rechercher : nom, téléphone, fonction..."><select id=fs><option value="">Tous les statuts</option>${ST.map(s=>`<option>${s}</option>`).join('')}</select><div id=l></div>`;
+const u=()=>{const q=$('#q').value.toLowerCase(),s=$('#fs').value;
+$('#l').innerHTML=M.filter(m=>(!s||m.d.statut==s)&&(!q||(JSON.stringify(Object.values(m.d))+m.numero).toLowerCase().includes(q))).sort((a,b)=>nm(a).localeCompare(nm(b))).map(m=>`<div class="c row" onclick="go('fiche','${m.id}')"><div class=av>${E((m.d.nom||'?')[0])}</div><div><b>${E(nm(m))}</b><br><small>N° ${m.numero} ${E(m.d.fonction||m.d.statut||'')} ${E(m.d.tel||'')}</small></div></div>`).join('')||'<p>Aucun membre trouvé.</p>'};
+$('#q').oninput=$('#fs').onchange=u;u()};
+
+R.fiche=async id=>{const m=M.find(x=>x.id==id);if(!m)return go('reg');
+const{data}=await sb.from('photos').select('img').eq('membre_id',id).maybeSingle();IMG=data?.img||null;
+const t=(m.d.tel||'').replace(/\D/g,'');
+$('main').innerHTML=`<div class=c style="text-align:center">${IMG?`<img src="${IMG}" class=ph>`:''}<h2>${E(nm(m))}</h2>N° ${m.numero}${m.d.naissance?' - '+age(m.d.naissance)+' ans':''}</div>
+<div class=c>${F.slice(2).filter(f=>m.d[f[0]]).map(f=>`<div><label>${f[1]}</label><br>${E(f[2]=='date'?fr(m.d[f[0]]):m.d[f[0]])}</div>`).join('<br>')}<br><label>Départements</label><br>${E(val(m,'dep'))||'-'}<br><br><small>Dernière modification : ${E(m.maj_par||'')} le ${new Date(m.maj).toLocaleDateString('fr-FR')}</small></div>
+${can()?`<button class=p onclick="go('form','${id}')">Modifier</button>`:''}<button class=g2 onclick="pdfF('${id}')">Fiche PDF</button>${t?`<a class=btn href="tel:${t}">Appeler</a><a class=btn href="https://wa.me/${t}">WhatsApp</a>`:''}${me.role=='admin'?`<button class=p style="background:#a00" onclick="del('${id}')">Supprimer</button>`:''}`};
+
+R.form=id=>{if(!can())return go('dash');const m=id?M.find(x=>x.id==id):{d:{},version:1};pend=null;
+$('main').innerHTML=`<h3>${id?'Modifier la fiche':'Nouveau membre'}</h3><div class=c style="text-align:center"><img id=pv class=ph hidden><br><label class=btn>Prendre une photo<input type=file accept="image/*" capture=user hidden onchange="pic(this)"></label><label class=btn>Galerie<input type=file accept="image/*" hidden onchange="pic(this)"></label></div>
+<form id=f onsubmit="return false">${F.map(([k,l,t,o])=>`<label>${l}</label>`+(t=='sel'?`<select name=${k}><option value="">-</option>${o.map(x=>`<option${m.d[k]==x?' selected':''}>${x}</option>`).join('')}</select>`:t=='area'?`<textarea name=${k}>${E(m.d[k])}</textarea>`:t=='date'?`<input name=${k} type=text inputmode=numeric maxlength=10 placeholder="JJ/MM/AAAA" oninput="dm(this)" value="${E(fr(m.d[k]))}">`:`<input name=${k} type=${t} value="${E(m.d[k])}">`)).join('')}
+<label>Départements</label>${D.map(d=>`<div><input type=checkbox name=dep value="${E(d.nom)}"${dep(m,d.nom)?' checked':''}> ${E(d.nom)}</div>`).join('')}<br><button class=p id=sv>Enregistrer</button></form>`;
+if(id)sb.from('photos').select('img').eq('membre_id',id).maybeSingle().then(r=>{if(r.data){$('#pv').src=r.data.img;$('#pv').hidden=false}});
+$('#sv').onclick=()=>save(id,m)};
+
+function pic(i){const f=i.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,400/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);pend=c.toDataURL('image/jpeg',.7);$('#pv').src=pend;$('#pv').hidden=false};im.src=r.result};r.readAsDataURL(f)}
+
+async function save(id,m){const fd=new FormData($('#f')),d={};let bad='';F.forEach(([k,l,t])=>{const v=fd.get(k)||'';d[k]=t=='date'?iso(v):v;if(t=='date'&&v&&!d[k])bad=l});d.dep=fd.getAll('dep');
+if(!d.nom)return alert('Le nom est obligatoire.');if(bad)return alert('Date invalide : '+bad+'. Écrivez-la ainsi : JJ/MM/AAAA, par exemple 25/12/1990.');let r,mid=id;
+if(id){r=await sb.from('membres').update({d,version:m.version+1,maj:new Date(),maj_par:me.nom}).eq('id',id).eq('version',m.version).select();
+if(!r.error&&!r.data.length){alert('Cette fiche vient d\'être modifiée par quelqu\'un d\'autre. Elle est rechargée : refaites votre modification.');await load();return go('fiche',id)}}
+else{r=await sb.from('membres').insert({d,cree_par:me.nom,maj_par:me.nom}).select();mid=r.data?.[0]?.id}
+if(r.error)return alert('Erreur : '+r.error.message);
+if(pend)await sb.from('photos').upsert({membre_id:mid,img:pend});
+await load();go('fiche',mid)}
+async function del(id){if(!confirm('Supprimer définitivement ce membre ?'))return;await sb.from('membres').delete().eq('id',id);await load();go('reg')}
+
+function pdfF(id){const m=M.find(x=>x.id==id),p=new jspdf.jsPDF();p.setFillColor(36,59,125);p.rect(0,0,210,22,'F');p.setTextColor(255);p.setFontSize(16);p.text('CHAPEPH Book - Fiche de membre',10,14);p.setTextColor(0);
+if(IMG)p.addImage(IMG,'JPEG',152,28,48,60);p.setFontSize(14);p.text(nm(m)+'  (N° '+m.numero+')',10,34);p.setFontSize(11);let y=46;
+COLS.slice(3).forEach(([k,l])=>{const v=val(m,k);if(v==='')return;const w=p.splitTextToSize(l+' : '+v,y<92?135:185);p.text(w,10,y);y+=6*w.length+1;if(y>280){p.addPage();y=15}});
+p.save('fiche-'+m.numero+'.pdf')}
+
+R.rap=()=>{$('main').innerHTML=`<h3>Rapports</h3><div class=c><b>Colonnes</b><div class=cols>${COLS.map(([k,l])=>`<label><input type=checkbox value=${k}${['nom','prenoms','tel','age','fonction'].includes(k)?' checked':''}> ${l}</label>`).join('')}</div></div>
+<div class=c><b>Filtres</b><select id=rs><option value="">Sexe : tous</option><option>Homme</option><option>Femme</option></select><select id=rt><option value="">Statut : tous</option>${ST.map(s=>`<option>${s}</option>`).join('')}</select><select id=rd><option value="">Département : tous</option>${D.map(d=>`<option>${E(d.nom)}</option>`).join('')}</select><div class=row><input id=a1 type=number placeholder="Âge min"><input id=a2 type=number placeholder="Âge max"></div><input id=rq placeholder="Contient le texte..."></div>
+<button class=p onclick="rep('csv')">CSV</button><button class=p onclick="rep('xls')">Excel</button><button class=p onclick="rep('pdf')">PDF</button><div id=rv></div>`;
+document.querySelectorAll('main input,main select').forEach(i=>i.oninput=prev);prev()};
+function rdata(){const ks=[...document.querySelectorAll('.cols input:checked')].map(i=>i.value),s=$('#rs').value,t=$('#rt').value,d=$('#rd').value,a=+$('#a1').value||0,b=+$('#a2').value||200,q=$('#rq').value.toLowerCase(),fa=$('#a1').value||$('#a2').value;
+const ms=M.filter(m=>{const x=age(m.d.naissance);return(!s||m.d.sexe==s)&&(!t||m.d.statut==t)&&(!d||dep(m,d))&&(x===''?!fa:x>=a&&x<=b)&&(!q||JSON.stringify(Object.values(m.d)).toLowerCase().includes(q))}).sort((x,y)=>nm(x).localeCompare(nm(y)));
+return{h:ks.map(k=>COLS.find(c=>c[0]==k)[1]),r:ms.map(m=>ks.map(k=>val(m,k)))}}
+function prev(){const{h,r}=rdata();$('#rv').innerHTML=`<p>${r.length} membre(s)</p><div style="overflow-x:auto"><table><tr>${h.map(x=>`<th>${E(x)}</th>`).join('')}</tr>${r.map(w=>`<tr>${w.map(x=>`<td>${E(x)}</td>`).join('')}</tr>`).join('')}</table></div>`}
+function rep(t){const{h,r}=rdata();out(h,r,'rapport-'+new Date().toISOString().slice(0,10),t)}
+function out(h,r,n,t){if(t=='csv')dl(new Blob(['\ufeff'+[h,...r].map(w=>w.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\n')],{type:'text/csv'}),n+'.csv');
+else if(t=='xls'){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([h,...r]),'Registre');XLSX.writeFile(wb,n+'.xlsx')}
+else{const p=new jspdf.jsPDF('l'),w=277/h.length;let y=18;p.setFontSize(9);p.text('CHAPEPH Book - '+r.length+' membre(s)',10,10);
+[h,...r].forEach((row,i)=>{if(y>195){p.addPage();y=12}p.setFont(undefined,i?'normal':'bold');row.forEach((x,j)=>p.text(String(x).slice(0,Math.floor(w/1.8)),10+j*w,y));y+=6});p.save(n+'.pdf')}}
+function bk(){out(COLS.map(c=>c[1]),M.map(m=>COLS.map(c=>val(m,c[0]))),'sauvegarde-'+new Date().toISOString().slice(0,10),'xls')}
+
+R.plus=async()=>{let u='';
+if(me.role=='admin'){const{data}=await sb.from('profiles').select('*');
+u=`<div class=c><b>Utilisateurs</b>${(data||[]).map(p=>`<div>${E(p.nom)}<select onchange="rol('${p.id}',this.value)">${['admin','secretaire','consultation'].map(r=>`<option${p.role==r?' selected':''}>${r}</option>`).join('')}</select></div>`).join('')}<small>Nouvelle personne : Supabase > Authentication > Add user.</small></div>
+<div class=c><b>Départements</b>${D.map(d=>`<div class=row>${E(d.nom)} <button onclick="dd(${d.id})">Retirer</button></div>`).join('')}<div class=row><input id=nd placeholder="Nouveau département"><button class=p onclick="ad()">Ajouter</button></div></div>`}
+$('main').innerHTML=u+`<div class=c><b>Sauvegarde</b><p>À faire une fois par mois. Gardez le fichier sur Google Drive.</p><button class=g2 onclick="bk()">Exporter tout le registre</button></div><div class=c><small>Connecté : ${E(me.nom)} (${me.role})</small><br><button class=p onclick="sb.auth.signOut().then(()=>location.reload())">Se déconnecter</button></div>`};
+async function rol(id,r){await sb.from('profiles').update({role:r}).eq('id',id)}
+async function ad(){const n=$('#nd').value.trim();if(n){await sb.from('departements').insert({nom:n});await load();go('plus')}}
+async function dd(id){await sb.from('departements').delete().eq('id',id);await load();go('plus')}
+
+function login(){$('nav').hidden=true;$('main').innerHTML=`<div class=c style="text-align:center"><img src=icon-192.png width=96><h2>CHAPEPH Book</h2><input id=em type=email placeholder="E-mail"><input id=pw type=password placeholder="Mot de passe"><button class=p onclick="ent()">Se connecter</button><p id=er style="color:#a00"></p></div>`}
+async function ent(){const{error}=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});if(error)$('#er').textContent='E-mail ou mot de passe incorrect.';else boot()}
+async function boot(){const{data:{session}}=await sb.auth.getSession();if(!session)return login();
+const{data:p}=await sb.from('profiles').select('*').eq('id',session.user.id).maybeSingle();
+if(!p){$('main').innerHTML='<div class=c>Ce compte n\'est pas autorisé.</div>';return}
+me=p;await load();$('nav').hidden=false;$('#nf').hidden=!can();
+sb.channel('r').on('postgres_changes',{event:'*',schema:'public',table:'membres'},async()=>{await load();if(view=='dash')go('dash');if(view=='reg')$('#q').oninput()}).subscribe();go('dash')}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+boot();
+</script></body></html>
